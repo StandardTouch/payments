@@ -13,7 +13,7 @@ from frappe.utils import call_hook_method, cint, flt, get_url
 
 
 class GoCardlessSettings(Document):
-	supported_currencies = ["EUR", "DKK", "GBP", "SEK", "AUD", "NZD", "CAD", "USD"]
+	supported_currencies = ("EUR", "DKK", "GBP", "SEK", "AUD", "NZD", "CAD", "USD")
 
 	def validate(self):
 		self.initialize_client()
@@ -21,9 +21,7 @@ class GoCardlessSettings(Document):
 	def initialize_client(self):
 		self.environment = self.get_environment()
 		try:
-			self.client = gocardless_pro.Client(
-				access_token=self.access_token, environment=self.environment
-			)
+			self.client = gocardless_pro.Client(access_token=self.access_token, environment=self.environment)
 			return self.client
 		except Exception as e:
 			frappe.throw(e)
@@ -32,7 +30,7 @@ class GoCardlessSettings(Document):
 		from payments.utils import create_payment_gateway
 
 		create_payment_gateway(
-			"GoCardless-" + self.gateway_name, settings="GoCardLess Settings", controller=self.gateway_name
+			"GoCardless-" + self.gateway_name, settings="GoCardless Settings", controller=self.gateway_name
 		)
 		call_hook_method("payment_gateway_enabled", gateway="GoCardless-" + self.gateway_name)
 
@@ -52,19 +50,19 @@ class GoCardlessSettings(Document):
 			"payer_name": customer_data.customer_name,
 			"order_id": data.name,
 			"currency": data.currency,
+			"charge_date": data.transaction_date or frappe.utils.nowdate(),
 		}
 
-		valid_mandate = self.check_mandate_validity(data)
+		valid_mandate, next_possible_charge_date = self.check_mandate_validity(data)
 		if valid_mandate is not None:
 			data.update(valid_mandate)
-
+			data["charge_date"] = max(data.get("charge_date"), next_possible_charge_date)
 			self.create_payment_request(data)
 			return False
 		else:
 			return True
 
 	def check_mandate_validity(self, data):
-
 		if frappe.db.exists("GoCardless Mandate", dict(customer=data.get("payer_name"), disabled=0)):
 			registered_mandate = frappe.db.get_value(
 				"GoCardless Mandate", dict(customer=data.get("payer_name"), disabled=0), "mandate"
@@ -78,11 +76,11 @@ class GoCardlessSettings(Document):
 				or mandate.status == "submitted"
 				or mandate.status == "active"
 			):
-				return {"mandate": registered_mandate}
+				return {"mandate": registered_mandate}, mandate.next_possible_charge_date
 			else:
-				return None
+				return None, None
 		else:
-			return None
+			return None, None
 
 	def get_environment(self):
 		if self.use_sandbox:
@@ -124,15 +122,14 @@ class GoCardlessSettings(Document):
 		redirect_to = self.data.get("redirect_to") or None
 		redirect_message = self.data.get("redirect_message") or None
 
-		reference_doc = frappe.get_doc(
-			self.data.get("reference_doctype"), self.data.get("reference_docname")
-		)
+		reference_doc = frappe.get_doc(self.data.get("reference_doctype"), self.data.get("reference_docname"))
 		self.initialize_client()
 
 		try:
 			payment = self.client.payments.create(
 				params={
 					"amount": cint(reference_doc.grand_total * 100),
+					"charge_date": self.data.get("charge_date"),
 					"currency": reference_doc.currency,
 					"links": {"mandate": self.data.get("mandate")},
 					"metadata": {
@@ -172,7 +169,7 @@ class GoCardlessSettings(Document):
 				frappe.log_error("Gocardless payment failed")
 				self.integration_request.db_set("error", payment.status, update_modified=False)
 
-		except Exception as e:
+		except Exception:
 			frappe.log_error("GoCardless Payment Error")
 
 		if self.flags.status_changed_to == "Completed":
@@ -204,14 +201,10 @@ class GoCardlessSettings(Document):
 
 def get_gateway_controller(doc):
 	payment_request = frappe.get_doc("Payment Request", doc)
-	gateway_controller = frappe.db.get_value(
-		"Payment Gateway", payment_request.payment_gateway, "gateway_controller"
-	)
-	return gateway_controller
+	return frappe.db.get_value("Payment Gateway", payment_request.payment_gateway, "gateway_controller")
 
 
 def gocardless_initialization(doc):
 	gateway_controller = get_gateway_controller(doc)
 	settings = frappe.get_doc("GoCardless Settings", gateway_controller)
-	client = settings.initialize_client()
-	return client
+	return settings.initialize_client()

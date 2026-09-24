@@ -18,7 +18,7 @@ from payments.utils import erpnext_app_import_guard
 
 
 class MpesaSettings(Document):
-	supported_currencies = ["KES"]
+	supported_currencies = ("KES",)
 
 	def validate_transaction_currency(self, currency):
 		if currency not in self.supported_currencies:
@@ -44,24 +44,16 @@ class MpesaSettings(Document):
 		)
 
 		# required to fetch the bank account details from the payment gateway account
-		frappe.db.commit()  # nosemgrep
 		create_mode_of_payment("Mpesa-" + self.payment_gateway_name, payment_type="Phone")
+		frappe.db.commit()  # nosemgrep
 
 	def request_for_payment(self, **kwargs):
 		args = frappe._dict(kwargs)
 		request_amounts = self.split_request_amount_according_to_transaction_limit(args)
 
-		for i, amount in enumerate(request_amounts):
+		for _i, amount in enumerate(request_amounts):
 			args.request_amount = amount
-			if frappe.flags.in_test:
-				from payments.payment_gateways.doctype.mpesa_settings.test_mpesa_settings import (
-					get_payment_request_response_payload,
-				)
-
-				response = frappe._dict(get_payment_request_response_payload(amount))
-			else:
-				response = frappe._dict(generate_stk_push(**args))
-
+			response = frappe._dict(generate_stk_push(**args))
 			self.handle_api_response("CheckoutRequestID", args, response)
 
 	def split_request_amount_according_to_transaction_limit(self, args):
@@ -90,22 +82,15 @@ class MpesaSettings(Document):
 			reference_doctype="Mpesa Settings", reference_docname=self.name, doc_details=vars(self)
 		)
 
-		if frappe.flags.in_test:
-			from payments.payment_gateways.doctype.mpesa_settings.test_mpesa_settings import (
-				get_test_account_balance_response,
-			)
-
-			response = frappe._dict(get_test_account_balance_response())
-		else:
-			response = frappe._dict(get_account_balance(payload))
+		response = frappe._dict(get_account_balance(payload))
 
 		self.handle_api_response("ConversationID", payload, response)
 
 	def handle_api_response(self, global_id, request_dict, response):
 		"""Response received from API calls returns a global identifier for each transaction, this code is returned during the callback."""
 		# check error response
-		if getattr(response, "requestId"):
-			req_name = getattr(response, "requestId")
+		if response.requestId:
+			req_name = response.requestId
 			error = response
 		else:
 			# global checkout id used as request name
@@ -116,7 +101,7 @@ class MpesaSettings(Document):
 			create_request_log(request_dict, "Host", "Mpesa", req_name, error)
 
 		if error:
-			frappe.throw(_(getattr(response, "errorMessage")), title=_("Transaction Error"))
+			frappe.throw(_(response.errorMessage), title=_("Transaction Error"))
 
 
 def generate_stk_push(**kwargs):
@@ -143,7 +128,7 @@ def generate_stk_push(**kwargs):
 
 		mobile_number = sanitize_mobile_number(args.sender)
 
-		response = connector.stk_push(
+		return connector.stk_push(
 			business_shortcode=business_shortcode,
 			amount=args.request_amount,
 			passcode=mpesa_settings.get_password("online_passkey"),
@@ -152,9 +137,6 @@ def generate_stk_push(**kwargs):
 			phone_number=mobile_number,
 			description="POS Payment",
 		)
-
-		return response
-
 	except Exception:
 		frappe.log_error("Mpesa Express Transaction Error")
 		frappe.throw(
@@ -197,7 +179,7 @@ def verify_transaction(**kwargs):
 				)
 
 				total_paid = amount + sum(completed_payments)
-				mpesa_receipts = ", ".join(mpesa_receipts + [mpesa_receipt])
+				mpesa_receipts = ", ".join([*mpesa_receipts, mpesa_receipt])
 
 				if total_paid >= pr.grand_total:
 					pr.run_method("on_payment_authorized", "Completed")
@@ -268,7 +250,7 @@ def get_account_balance(request_payload):
 			+ "/api/method/payments.payment_gateways.doctype.mpesa_settings.mpesa_settings.process_balance_info"
 		)
 
-		response = connector.get_balance(
+		return connector.get_balance(
 			mpesa_settings.initiator_name,
 			mpesa_settings.security_credential,
 			mpesa_settings.till_number,
@@ -277,7 +259,6 @@ def get_account_balance(request_payload):
 			callback_url,
 			callback_url,
 		)
-		return response
 	except Exception:
 		frappe.log_error("Mpesa: Failed to get account balance")
 		frappe.throw(_("Please check your configuration and try again"), title=_("Error"))
@@ -318,9 +299,7 @@ def process_balance_info(**kwargs):
 			)
 		except Exception:
 			request.handle_failure(account_balance_response)
-			frappe.log_error(
-				title="Mpesa Account Balance Processing Error", message=account_balance_response
-			)
+			frappe.log_error(title="Mpesa Account Balance Processing Error", message=account_balance_response)
 	else:
 		request.handle_failure(account_balance_response)
 

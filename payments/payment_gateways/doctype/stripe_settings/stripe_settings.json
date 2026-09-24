@@ -62,7 +62,28 @@
   {
    "fieldname": "redirect_url",
    "fieldtype": "Data",
-   "label": "Redirect URL"
+   "hidden": 0,
+   "ignore_user_permissions": 0,
+   "ignore_xss_filter": 0,
+   "in_filter": 0,
+   "in_global_search": 0,
+   "in_list_view": 0,
+   "in_standard_filter": 0,
+   "label": "Redirect URL",
+   "length": 0,
+   "no_copy": 0,
+   "permlevel": 0,
+   "precision": "",
+   "print_hide": 0,
+   "print_hide_if_no_value": 0,
+   "read_only": 0,
+   "remember_last_selected_value": 0,
+   "report_hide": 0,
+   "reqd": 0,
+   "search_index": 0,
+   "set_only_once": 0,
+   "translatable": 0,
+   "unique": 0
   },
   {
    "fieldname": "webhook_secret",
@@ -73,7 +94,7 @@
    "fieldname": "interval",
    "fieldtype": "Select",
    "label": "Interval",
-   "options": "\nMonth\nDaily\nYearly"
+   "options": "\\nMonth\\nDaily\\nYearly"
   },
   {
    "default": "0",

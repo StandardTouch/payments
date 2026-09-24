@@ -26,63 +26,64 @@ var card = elements.create('card', {
 card.mount('#card-element');
 
 function setOutcome(result) {
-    if (result.token) {
-        $('#submit').prop('disabled', true).html('Processing...');
-        frappe.call({
-            method: "payments.templates.pages.stripe_checkout.make_payment",
-            freeze: true,
-            headers: { "X-Requested-With": "XMLHttpRequest" },
-            args: {
-                "stripe_token_id": result.token.id,
-                "data": JSON.stringify({{ frappe.form_dict|json }}),
-                "reference_doctype": "{{ reference_doctype }}",
-                "reference_docname": "{{ reference_docname }}"
-            },
-            callback: function(r) {
-                if (r.message.status == "Completed") {
-                    $('#submit').hide();
-                    $('.success').show();
-                    frappe.call({
-                        method: "payments.templates.pages.stripe_checkout.payment_entry",
-                        args: {
-                            "stripe_token_id": result.token.id,
-                            "data": JSON.stringify({{ frappe.form_dict|json }}),
-                            "reference_doctype": "{{ reference_doctype }}",
-                            "reference_docname": "{{ reference_docname }}"
-                        },
-                        callback: function(r) {
-                            if (r.message.status == 'Failed') {
-                                frappe.msgprint({
-                                    title: __('Success'),
-                                    indicator: 'green',
-                                    message: __('Do not worry, Payment is successful. Invoice status updates soon.')
-                                });
-                            } else {
-                                frappe.msgprint({
-                                    title: __('Success'),
-                                    indicator: 'green',
-                                    message: __('Invoice status updated.')
-                                });
-                            }
-                        }
-                    });
-                    setTimeout(function() {
-                        window.location.href = r.message.redirect_to;
-                    }, 2000);
-                } else {
-                    $('#submit').hide();
-                    $('.error').show();
-                    setTimeout(function() {
-                        window.location.href = r.message.redirect_to;
-                    }, 2000);
-                }
-            }
-        });
-    } else if (result.error) {
-        $('.error').html(result.error.message);
-        $('.error').show();
-        $('#submit').prop('disabled', false).html('Pay'); // Re-enable button on error
-    }
+	if (result.token) {
+		$('#submit').prop('disabled', true).html(__('Processing...'));
+		frappe.call({
+			method: "payments.templates.pages.stripe_checkout.make_payment",
+			freeze: true,
+			headers: { "X-Requested-With": "XMLHttpRequest" },
+			args: {
+				"stripe_token_id": result.token.id,
+				"data": JSON.stringify({{ frappe.form_dict|json }}),
+				"reference_doctype": "{{ reference_doctype }}",
+				"reference_docname": "{{ reference_docname }}",
+				"payment_gateway": "{{ payment_gateway }}"
+			},
+			callback: function(r) {
+				if (r.message.status == "Completed") {
+					$('#submit').hide();
+					$('.success').show();
+					frappe.call({
+						method: "payments.templates.pages.stripe_checkout.payment_entry",
+						args: {
+							"stripe_token_id": result.token.id,
+							"data": JSON.stringify({{ frappe.form_dict|json }}),
+							"reference_doctype": "{{ reference_doctype }}",
+							"reference_docname": "{{ reference_docname }}"
+						},
+						callback: function(r) {
+							if (r.message.status == 'Failed') {
+								frappe.msgprint({
+									title: __('Success'),
+									indicator: 'green',
+									message: __('Do not worry, Payment is successful. Invoice status updates soon.')
+								});
+							} else {
+								frappe.msgprint({
+									title: __('Success'),
+									indicator: 'green',
+									message: __('Invoice status updated.')
+								});
+							}
+						}
+					});
+					setTimeout(function() {
+						window.location.href = r.message.redirect_to;
+					}, 2000);
+				} else {
+					$('#submit').hide();
+					$('.error').show();
+					setTimeout(function() {
+						window.location.href = r.message.redirect_to;
+					}, 2000);
+				}
+			}
+		});
+	} else if (result.error) {
+		$('.error').html(result.error.message);
+		$('.error').show();
+		$('#submit').prop('disabled', false).html('Pay'); // Re-enable button on error
+	}
 }
 
 card.on('change', function(event) {
